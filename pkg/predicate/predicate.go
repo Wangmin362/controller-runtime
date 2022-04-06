@@ -43,6 +43,7 @@ type Predicate interface {
 	Generic(event.GenericEvent) bool
 }
 
+// TODO 这里为什么需要定义这么多匿名变量？
 var _ Predicate = Funcs{}
 var _ Predicate = ResourceVersionChangedPredicate{}
 var _ Predicate = GenerationChangedPredicate{}

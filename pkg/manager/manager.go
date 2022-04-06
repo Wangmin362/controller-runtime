@@ -291,6 +291,7 @@ type Runnable interface {
 // RunnableFunc implements Runnable using a function.
 // It's very important that the given function block
 // until it's done running.
+// TODO 有点不理解这种写法，一个方法去实现一个接口
 type RunnableFunc func(context.Context) error
 
 // Start implements Runnable.
