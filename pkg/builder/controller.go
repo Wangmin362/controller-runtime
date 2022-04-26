@@ -186,7 +186,7 @@ func (blder *Builder) Build(r reconcile.Reconciler) (controller.Controller, erro
 		return nil, fmt.Errorf("must provide an object for reconciliation")
 	}
 
-	// Set the ControllerManagedBy
+	// Set the ControllerManagedBy 内部实际上就是创建一个Controller
 	if err := blder.doController(r); err != nil {
 		return nil, err
 	}
@@ -285,6 +285,7 @@ func (blder *Builder) doController(r reconcile.Reconciler) error {
 
 	// Retrieve the GVK from the object we're reconciling
 	// to prepopulate logger information, and to optionally generate a default name.
+	// 这里实际上就是在获取自定义的CRD资源的GVK，譬如ucwi
 	gvk, err := getGvk(blder.forInput.object, blder.mgr.GetScheme())
 	if err != nil {
 		return err

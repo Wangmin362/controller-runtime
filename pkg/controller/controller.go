@@ -84,6 +84,7 @@ type Controller interface {
 // New returns a new Controller registered with the Manager.  The Manager will ensure that shared Caches have
 // been synced before the Controller is Started.
 func New(name string, mgr manager.Manager, options Options) (Controller, error) {
+	// 创建Controller，新创建出来的Controller没有被Manger管理，所以方法名为Unmanaged
 	c, err := NewUnmanaged(name, mgr, options)
 	if err != nil {
 		return nil, err
@@ -117,6 +118,7 @@ func NewUnmanaged(name string, mgr manager.Manager, options Options) (Controller
 	}
 
 	if options.RateLimiter == nil {
+		// 这里设置workqueue的限速策略，默认的选速策略是在漏斗桶以及指数限速之间取最大值
 		options.RateLimiter = workqueue.DefaultControllerRateLimiter()
 	}
 
