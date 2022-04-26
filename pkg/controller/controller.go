@@ -123,6 +123,7 @@ func NewUnmanaged(name string, mgr manager.Manager, options Options) (Controller
 	}
 
 	// Inject dependencies into Reconciler
+	// TODO 这玩意玩啥要这么设计，应该就是修改Manager的某些字段，这个函数名也太宽泛了
 	if err := mgr.SetFields(options.Reconciler); err != nil {
 		return nil, err
 	}
