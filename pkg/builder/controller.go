@@ -199,7 +199,9 @@ func (blder *Builder) Build(r reconcile.Reconciler) (controller.Controller, erro
 		return nil, err
 	}
 
-	// Set the Watch TODO 这里Watch啥？
+	// Set the Watch
+	// 这里的watch实际上就是获取每个监听对象的Informer，然后调用Informer.AddEventHandler把从Informer中获取到的事件添加到workqueue中
+	// 实际上，截至到这里都还没有正式启动资源监听，而是把各个资源的监听放入到了Controller.startWatches当中
 	if err := blder.doWatch(); err != nil {
 		return nil, err
 	}

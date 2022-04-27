@@ -311,12 +311,14 @@ func New(config *rest.Config, options Options) (Manager, error) {
 	// Set default values for options fields
 	options = setOptionsDefaults(options)
 
+	// 这里很重要，所有监听资源所需要的InformerMap就是在这里面构建的
 	cluster, err := cluster.New(config, func(clusterOptions *cluster.Options) {
 		clusterOptions.Scheme = options.Scheme
 		clusterOptions.MapperProvider = options.MapperProvider
 		clusterOptions.Logger = options.Logger
 		clusterOptions.SyncPeriod = options.SyncPeriod
 		clusterOptions.Namespace = options.Namespace
+		// 用户可以自定义InformerMap的生成
 		clusterOptions.NewCache = options.NewCache
 		clusterOptions.NewClient = options.NewClient
 		clusterOptions.ClientDisableCacheFor = options.ClientDisableCacheFor

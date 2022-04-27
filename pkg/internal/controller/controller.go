@@ -82,6 +82,7 @@ type Controller struct {
 	CacheSyncTimeout time.Duration
 
 	// startWatches maintains a list of sources, handlers, and predicates to start when the controller is started.
+	// 保存了所有监听对象的处理，每个Controller至少都有一个CRD对象监听源，除此之外还有可能监听通过Builder.For(), Builder.Watches()方法添加的对象
 	startWatches []watchDescription
 
 	// Log is used to log messages to users during reconciliation, or for example when a watch is started.
@@ -121,6 +122,7 @@ func (c *Controller) Watch(src source.Source, evthdler handler.EventHandler, prc
 	defer c.mu.Unlock()
 
 	// Inject Cache into arguments
+	// 这里向Source中注入了informerMap,也就是Kind.cache字段被填充，监听资源的informer就从里面获取
 	if err := c.SetFields(src); err != nil {
 		return err
 	}
@@ -160,6 +162,7 @@ func (c *Controller) Start(ctx context.Context) error {
 	// Set the internal context.
 	c.ctx = ctx
 
+	// 创建workqueue
 	c.Queue = c.MakeQueue()
 	go func() {
 		<-ctx.Done()
@@ -179,6 +182,8 @@ func (c *Controller) Start(ctx context.Context) error {
 		for _, watch := range c.startWatches {
 			c.Log.Info("Starting EventSource", "source", fmt.Sprintf("%s", watch.src))
 
+			// 构建Controller的时候也执行过doWatch()方法，但是这里面并没有执行Source.Start()，因为此时Controller还没有启动
+			// 到了这里才把每个监听资源的EventHandler注册到Informer当中
 			if err := watch.src.Start(ctx, watch.handler, c.Queue, watch.predicates...); err != nil {
 				return err
 			}
@@ -187,7 +192,9 @@ func (c *Controller) Start(ctx context.Context) error {
 		// Start the SharedIndexInformer factories to begin populating the SharedIndexInformer caches
 		c.Log.Info("Starting Controller")
 
+		// 这里实际上在等待所有的监听对象的Informer准备好，只要有一个监听对象的Informer回去失败，当前Controller就认为启动失败了
 		for _, watch := range c.startWatches {
+			// 目前使用的Source都是Kind,因此肯定是SyncingSource类型
 			syncingSource, ok := watch.src.(source.SyncingSource)
 			if !ok {
 				continue
@@ -200,6 +207,7 @@ func (c *Controller) Start(ctx context.Context) error {
 
 				// WaitForSync waits for a definitive timeout, and returns if there
 				// is an error or a timeout
+				// 等待Kind.started channel中写入数据
 				if err := syncingSource.WaitForSync(sourceStartCtx); err != nil {
 					err := fmt.Errorf("failed to wait for %s caches to sync: %w", c.Name, err)
 					c.Log.Error(err, "Could not wait for Cache to sync")
@@ -221,6 +229,7 @@ func (c *Controller) Start(ctx context.Context) error {
 		// Launch workers to process resources
 		c.Log.Info("Starting workers", "worker count", c.MaxConcurrentReconciles)
 		wg.Add(c.MaxConcurrentReconciles)
+		// 启动多个Reconcile消费Informer放入workqueue中的事件
 		for i := 0; i < c.MaxConcurrentReconciles; i++ {
 			go func() {
 				defer wg.Done()
@@ -240,6 +249,7 @@ func (c *Controller) Start(ctx context.Context) error {
 
 	<-ctx.Done()
 	c.Log.Info("Shutdown signal received, waiting for all workers to finish")
+	// 等待所有的Reconcile处理完毕
 	wg.Wait()
 	c.Log.Info("All workers finished")
 	return nil
@@ -310,6 +320,8 @@ func (c *Controller) reconcileHandler(ctx context.Context, obj interface{}) {
 
 	// RunInformersAndControllers the syncHandler, passing it the Namespace/Name string of the
 	// resource to be synced.
+	// 这里最终就进入到用户自己实现的Reconcile当中了，可以看出其返回值非常重要，如果返回值有错误，那么直接重新入队
+	// 当然，用户也可以选择延时一会儿重新入队
 	result, err := c.Reconcile(ctx, req)
 	switch {
 	case err != nil:
@@ -331,6 +343,7 @@ func (c *Controller) reconcileHandler(ctx context.Context, obj interface{}) {
 	default:
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
+		// 如果用户自定义的Reconcile既没有重新入队的需求，也没有错误，那么就任务当前事件已经处理完毕，就可以直接从队列当中丢弃
 		c.Queue.Forget(obj)
 		ctrlmetrics.ReconcileTotal.WithLabelValues(c.Name, labelSuccess).Inc()
 	}

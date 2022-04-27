@@ -162,6 +162,7 @@ func New(config *rest.Config, opts ...Option) (Cluster, error) {
 	}
 
 	// Create the cache for the cached read client and registering informers
+	// 这里就是在构建InformerMap
 	cache, err := options.NewCache(config, cache.Options{Scheme: options.Scheme, Mapper: mapper, Resync: options.SyncPeriod, Namespace: options.Namespace})
 	if err != nil {
 		return nil, err

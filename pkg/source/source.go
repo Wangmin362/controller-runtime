@@ -96,7 +96,8 @@ type Kind struct {
 	// Type is the type of object to watch.  e.g. &v1.Pod{} 需要调谐的对象，也就是CRD对应的goType
 	Type client.Object
 
-	// cache used to watch APIs 这里的Cache实际上就是监听对象的Informer
+	// cache used to watch APIs 这里的Cache实际上就是监听对象的Informer,最终注入的对象就是informerCache，通过Controller.Watch()
+	// 准确的说，这边变量名应该叫做informerCache
 	cache cache.Cache
 
 	// started may contain an error if one was encountered during startup. If its closed and does not
@@ -136,6 +137,7 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 		// an error or the specified context is cancelled or expired.
 		if err := wait.PollImmediateUntilWithContext(ctx, 10*time.Second, func(ctx context.Context) (bool, error) {
 			// Lookup the Informer from the Cache and add an EventHandler which populates the Queue
+			// 自定义CRD的Informer是啥时候生成的呢？ 其实就是在这里生成的，如果informerMap没有的话，就会自动成成一个
 			i, lastErr = ks.cache.GetInformer(ctx, ks.Type)
 			if lastErr != nil {
 				kindMatchErr := &meta.NoKindMatchError{}
@@ -155,11 +157,13 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 			return
 		}
 
+		// 到这里实际上就把client-go中的informer中获取的事件就拿到手了，informer中的事件会被存到workqueue中
 		i.AddEventHandler(internal.EventHandler{Queue: queue, EventHandler: handler, Predicates: prct})
 		if !ks.cache.WaitForCacheSync(ctx) {
 			// Would be great to return something more informative here
 			ks.started <- errors.New("cache did not sync")
 		}
+		// 实际上通过关闭Kind.started通道，
 		close(ks.started)
 	}()
 

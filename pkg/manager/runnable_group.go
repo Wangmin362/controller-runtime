@@ -77,9 +77,10 @@ type runnableGroup struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	start        sync.Mutex
-	startOnce    sync.Once
-	started      bool
+	start     sync.Mutex
+	startOnce sync.Once
+	started   bool
+	// 里面的每一个readyRunnable实际上就是一个Controller，其实只要是实现了Start(context.Context)方法就可以添加进来
 	startQueue   []*readyRunnable
 	startReadyCh chan *readyRunnable
 
@@ -121,6 +122,7 @@ func (r *runnableGroup) Started() bool {
 // Start starts the group and waits for all
 // initially registered runnables to start.
 // It can only be called once, subsequent calls have no effect.
+// 实际上这里的runnableGroup主要承载的就是Manager所管理的Controller
 func (r *runnableGroup) Start(ctx context.Context) error {
 	var retErr error
 
@@ -134,6 +136,7 @@ func (r *runnableGroup) Start(ctx context.Context) error {
 		// the runnables that were added prior.
 		r.start.Lock()
 		r.started = true
+		// 拿出runnableGroup中的一个个Runnable，写到ch中，上方的reconcile回启动这些Runnable
 		for _, rn := range r.startQueue {
 			rn.signalReady = true
 			r.ch <- rn
@@ -175,6 +178,7 @@ func (r *runnableGroup) Start(ctx context.Context) error {
 // to this group. Its primary job is to read off the internal channel
 // and schedule runnables while tracking their state.
 func (r *runnableGroup) reconcile() {
+	// 这里的runnable实际上就是Controller，本质上是实现了Start(context.Context)接口的所有goType，但是这里目前只关心Controller
 	for runnable := range r.ch {
 		// Handle stop.
 		// If the shutdown has been called we want to avoid
