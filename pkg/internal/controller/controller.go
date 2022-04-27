@@ -67,6 +67,7 @@ type Controller struct {
 	mu sync.Mutex
 
 	// Started is true if the Controller has been Started
+	// TODO 该值什么时候被设置为true的？ Manger.Start()??
 	Started bool
 
 	// ctx is the context that was passed to Start() and used when starting watches.
@@ -136,6 +137,7 @@ func (c *Controller) Watch(src source.Source, evthdler handler.EventHandler, prc
 	//
 	// These watches are going to be held on the controller struct until the manager or user calls Start(...).
 	if !c.Started {
+		// TODO 刚开始newController的时候，肯定还没有启动Controller，Controller的启动肯定是在Manger.Start()当中完成的
 		c.startWatches = append(c.startWatches, watchDescription{src: src, handler: evthdler, predicates: prct})
 		return nil
 	}

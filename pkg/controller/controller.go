@@ -35,14 +35,18 @@ import (
 // Options are the arguments for creating a new Controller.
 type Options struct {
 	// MaxConcurrentReconciles is the maximum number of concurrent Reconciles which can be run. Defaults to 1.
+	// 同时启动几个协程去调谐，有两个地方可以进行设置，一个是在Manager.Options()中设置，设置过后所有的Controller的默认并发度就是Manager中设置的值，当然在Controller中还是可以通过Builder.WithOptions()进行设置
+	// 另外一个是在Builder.WithOptions()中进行设置并发度
 	MaxConcurrentReconciles int
 
 	// Reconciler reconciles an object
+	// 这里实际上就是开发人员关心的业务逻辑
 	Reconciler reconcile.Reconciler
 
 	// RateLimiter is used to limit how frequently requests may be queued.
 	// Defaults to MaxOfRateLimiter which has both overall and per-item rate limiting.
 	// The overall is a token bucket and the per-item is exponential.
+	// 用于指定事件重新入对的限速策略
 	RateLimiter ratelimiter.RateLimiter
 
 	// Log is the logger used for this controller and passed to each reconciliation
@@ -51,6 +55,7 @@ type Options struct {
 
 	// CacheSyncTimeout refers to the time limit set to wait for syncing caches.
 	// Defaults to 2 minutes if not set.
+	// TODO 这里应该是在设置等待infermor同步的事件
 	CacheSyncTimeout time.Duration
 
 	// RecoverPanic indicates whether the panic caused by reconcile should be recovered.
@@ -82,7 +87,7 @@ type Controller interface {
 }
 
 // New returns a new Controller registered with the Manager.  The Manager will ensure that shared Caches have
-// been synced before the Controller is Started.
+// been synced before the Controller is Started. name参数为当前CRD的GVK.String()
 func New(name string, mgr manager.Manager, options Options) (Controller, error) {
 	// 创建Controller，新创建出来的Controller没有被Manger管理，所以方法名为Unmanaged
 	c, err := NewUnmanaged(name, mgr, options)
@@ -91,6 +96,7 @@ func New(name string, mgr manager.Manager, options Options) (Controller, error) 
 	}
 
 	// Add the controller as a Manager components
+	// 把新创建的Controller加入到Manager当中，在Manager中，每一个Controller都是作为一个Runnable，并且Manager中对于Runnable分成了四个组
 	return c, mgr.Add(c)
 }
 
@@ -109,10 +115,12 @@ func NewUnmanaged(name string, mgr manager.Manager, options Options) (Controller
 		options.Log = mgr.GetLogger()
 	}
 
+	// 并发度原来是在这里设置了默认值，总结下来并发度有两个地方可以设置，一个是Buidler.WithOptions()，一个是Manager.Options()
 	if options.MaxConcurrentReconciles <= 0 {
 		options.MaxConcurrentReconciles = 1
 	}
 
+	// 设置缓存同步超时等待时间，这里同样也是在Buidler.WithOptions()以及Manager.Options()中可以进行设置
 	if options.CacheSyncTimeout == 0 {
 		options.CacheSyncTimeout = 2 * time.Minute
 	}
@@ -128,16 +136,16 @@ func NewUnmanaged(name string, mgr manager.Manager, options Options) (Controller
 		return nil, err
 	}
 
-	// Create controller with dependencies set
+	// Create controller with dependencies set，最终构造了一个Controller对象
 	return &controller.Controller{
-		Do: options.Reconciler,
+		Do: options.Reconciler, // 设置Controller的Reconcile, 从这里可以看出每个Controller管理一个Reconcile
 		MakeQueue: func() workqueue.RateLimitingInterface {
 			return workqueue.NewNamedRateLimitingQueue(options.RateLimiter, name)
 		},
 		MaxConcurrentReconciles: options.MaxConcurrentReconciles,
 		CacheSyncTimeout:        options.CacheSyncTimeout,
 		SetFields:               mgr.SetFields,
-		Name:                    name,
+		Name:                    name, // TODO 名字对于Controller有多重要呢？ 到底用在了那个地方
 		Log:                     options.Log.WithName("controller").WithName(name),
 		RecoverPanic:            options.RecoverPanic,
 	}, nil

@@ -51,14 +51,21 @@ const (
 
 // Builder builds a Controller.
 type Builder struct {
-	forInput         ForInput
-	ownsInput        []OwnsInput
-	watchesInput     []WatchesInput
-	mgr              manager.Manager
+	// 当前Operator需要监听的CRD资源
+	forInput ForInput
+	// Operator需要监听的依赖资源，这些依赖资源是通过当前Operator创建的，并且通过controllerutil.SetOwnerReference() 设置了OwnerReference
+	ownsInput []OwnsInput
+	// 监听的感兴趣的资源，可以监听K8S内的任意资源，ownsInput对象可以包含在watchsInput中，也就是可以通过Builder.Watchs()方法替换Buidler.Owns()方法
+	watchesInput []WatchesInput
+	// 创建的Manager, 创建Controller的参数有一部分来自于Manager, 同时需要把新创建的Controller关联到Manager当中，因此需要这里需要持有Manager的引用
+	mgr manager.Manager
+	// 可以立即为Spring的Filter，通过Predicate可以过滤掉一些我们不关心的事件
 	globalPredicates []predicate.Predicate
-	ctrl             controller.Controller
-	ctrlOptions      controller.Options
-	name             string
+	// 新创建的Controller
+	ctrl controller.Controller
+	// 构建Controller需要的参数，这些参数的设置可以通过Builder.WithOptions()方法进行定制
+	ctrlOptions controller.Options
+	name        string
 }
 
 // ControllerManagedBy returns a new controller builder that will be started by the provided Manager.
@@ -186,12 +193,13 @@ func (blder *Builder) Build(r reconcile.Reconciler) (controller.Controller, erro
 		return nil, fmt.Errorf("must provide an object for reconciliation")
 	}
 
-	// Set the ControllerManagedBy 内部实际上就是创建一个Controller
+	// Set the ControllerManagedBy
+	// 根据Buidler.WithOptions()以及Manager.Options()参数构造Controller，并且把Controller作为Runnable添加到Manager当中
 	if err := blder.doController(r); err != nil {
 		return nil, err
 	}
 
-	// Set the Watch
+	// Set the Watch TODO 这里Watch啥？
 	if err := blder.doWatch(); err != nil {
 		return nil, err
 	}
@@ -216,20 +224,25 @@ func (blder *Builder) project(obj client.Object, proj objectProjection) (client.
 	}
 }
 
+// doWatch方法实际上就是启动了所有需要监听对象的Informer，并且都添加了EventHandler
 func (blder *Builder) doWatch() error {
 	// Reconcile type
 	typeForSrc, err := blder.project(blder.forInput.object, blder.forInput.objectProjection)
 	if err != nil {
 		return err
 	}
+	// TODO 关心的事件源，里面应该是包含了监听对象的Infermor
 	src := &source.Kind{Type: typeForSrc}
+	// TODO 事件的处理函数
 	hdler := &handler.EnqueueRequestForObject{}
+	// 获取所有的过滤器
 	allPredicates := append(blder.globalPredicates, blder.forInput.predicates...)
+	// 这里实际上就是Watch就是CRD所有的事件，内部必然启动了一个Informer去获取所有的事件
 	if err := blder.ctrl.Watch(src, hdler, allPredicates...); err != nil {
 		return err
 	}
 
-	// Watches the managed types
+	// Watches the managed types 也就是监听CRD Operator创建的所有依赖
 	for _, own := range blder.ownsInput {
 		typeForSrc, err := blder.project(own.object, own.objectProjection)
 		if err != nil {
@@ -247,7 +260,7 @@ func (blder *Builder) doWatch() error {
 		}
 	}
 
-	// Do the watch requests
+	// Do the watch requests 监听感兴趣的资源事件
 	for _, w := range blder.watchesInput {
 		allPredicates := append([]predicate.Predicate(nil), blder.globalPredicates...)
 		allPredicates = append(allPredicates, w.predicates...)
@@ -275,7 +288,9 @@ func (blder *Builder) getControllerName(gvk schema.GroupVersionKind) string {
 	return strings.ToLower(gvk.Kind)
 }
 
+// 创建Controller
 func (blder *Builder) doController(r reconcile.Reconciler) error {
+	// 获取Manger中的配置，主要是获取Controller的并发度，以及同步等待超时时间
 	globalOpts := blder.mgr.GetControllerOptions()
 
 	ctrlOptions := blder.ctrlOptions
@@ -292,9 +307,11 @@ func (blder *Builder) doController(r reconcile.Reconciler) error {
 	}
 
 	// Setup concurrency.
+	// 如果用户没有指定Reconcile的并发度，就是用Manager的参数指定
 	if ctrlOptions.MaxConcurrentReconciles == 0 {
 		groupKind := gvk.GroupKind().String()
 
+		// 通过Manager的参数也可以设置Reconcile的并发度
 		if concurrency, ok := globalOpts.GroupKindConcurrency[groupKind]; ok && concurrency > 0 {
 			ctrlOptions.MaxConcurrentReconciles = concurrency
 		}

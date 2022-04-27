@@ -28,6 +28,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
 	api "sigs.k8s.io/controller-runtime/examples/crd/pkg"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -117,9 +118,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 利用Builder构建Controller,参数通过Manger的阐述构建
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&api.ChaosPod{}).
+		// 使用builder.WithPredicates()方法去过滤当前资源不关心的事件
+		//For(&api.ChaosPod{}, builder.WithPredicates()).
+		// 指定当前Operator关系的CRD对象
+		For(&api.ChaosPod{}, builder.WithPredicates()).
+		// 使用Owns这个API，就说明，在ChaoPod Reconcile中肯定需要使用controllerutil.SetOwnerReference这个API
+		// Owns这API只监视通过ChaoPod CRD创建的Pod的变化
 		Owns(&corev1.Pod{}).
+		// 通过Builder构建一个Controller
 		Complete(&reconciler{
 			Client: mgr.GetClient(),
 			scheme: mgr.GetScheme(),
@@ -129,6 +137,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 添加WebHook
 	err = ctrl.NewWebhookManagedBy(mgr).
 		For(&api.ChaosPod{}).
 		Complete()
@@ -138,6 +147,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
+	// 启动Manger, Manager回启动内部的Controller
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

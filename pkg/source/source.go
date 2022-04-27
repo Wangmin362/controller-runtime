@@ -53,9 +53,14 @@ const (
 //
 // Users may build their own Source implementations.  If their implementations implement any of the inject package
 // interfaces, the dependencies will be injected by the Controller when Watch is called.
+// Source其实就是所谓的事件源，而其中的事件就是我们创建的CRD相关的事件，也就是Builder.For()中传入的对象
 type Source interface {
 	// Start is internal and should be called only by the Controller to register an EventHandler with the Informer
 	// to enqueue reconcile.Requests.
+	// Start方法就是开启事件的监听，使用eventHandler来处理事件，使用workqueue来对到来的事件进行入队，这里实际上就是一个消费者和生产者模型
+	// 生产者就是K8S的Infromer，K8S中所有的事件都通过Informer交给Source，然后Informer直接返回。进下来就是Controller的事，Controller
+	// 负责从workqueue中获取一个个到来的事件，EventHandler就是负责事件的处理，实际上最终调用的就是开发者实现的Reconcile
+	// Predicate负责对于到来的事件进行过来操作，猜测这玩意应该有两个来源，一个是Builder.WithEventFilter， 一个是builder.WithPredicates()
 	Start(context.Context, handler.EventHandler, workqueue.RateLimitingInterface, ...predicate.Predicate) error
 }
 
@@ -88,10 +93,10 @@ func (ks *kindWithCache) WaitForSync(ctx context.Context) error {
 
 // Kind is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create).
 type Kind struct {
-	// Type is the type of object to watch.  e.g. &v1.Pod{}
+	// Type is the type of object to watch.  e.g. &v1.Pod{} 需要调谐的对象，也就是CRD对应的goType
 	Type client.Object
 
-	// cache used to watch APIs
+	// cache used to watch APIs 这里的Cache实际上就是监听对象的Informer
 	cache cache.Cache
 
 	// started may contain an error if one was encountered during startup. If its closed and does not
@@ -112,6 +117,7 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 	}
 
 	// cache should have been injected before Start was called
+	// TODO cache是在什么时候被注入到Kind中的？
 	if ks.cache == nil {
 		return fmt.Errorf("must call CacheInto on Kind before calling Start")
 	}
