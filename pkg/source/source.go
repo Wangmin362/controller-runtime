@@ -118,7 +118,7 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 	}
 
 	// cache should have been injected before Start was called
-	// TODO cache是在什么时候被注入到Kind中的？
+	// cache是在什么时候被注入到Kind中的？ 是在Controller.Watch()方法中通过setField注入的，注入的cache实际上就是InformerMap
 	if ks.cache == nil {
 		return fmt.Errorf("must call CacheInto on Kind before calling Start")
 	}
